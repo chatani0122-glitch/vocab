@@ -106,11 +106,28 @@ $("#items").onclick=ev=>{
   if(t.dataset.tg){const x=g("tg");x.done=!x.done}
   else if(t.dataset.rm){const x=g("rm");if(!confirm(`「${x.w}」を削除しますか？`))return;words=words.filter(y=>y!==x)}
   else if(t.dataset.ed){const x=g("ed");editId=x.id;$("#w").value=x.w;$("#m").value=x.m;$("#e").value=x.e;$("#add").textContent="更新";scrollTo(0,0);return}
-  else if(t.dataset.sp){speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(g("sp").w),{lang:"en-US"}));return}
+  else if(t.dataset.sp){speak(g("sp").w);return}
   else return;
   save();render();
 };
 $("#q").oninput=$("#f").onchange=render;
+
+// 発音: アメリカ英語(en-US)の音声を明示的に選ぶ
+const US_PREF=[/natural.*(aria|jenny|guy|ana)/i,/google us english/i,/samantha/i,/aria|jenny|guy/i,/zira|david|mark/i];
+function usVoice(){
+  const vs=speechSynthesis.getVoices().filter(v=>/^en[-_]US$/i.test(v.lang));
+  for(const re of US_PREF){const v=vs.find(v=>re.test(v.name));if(v)return v}
+  return vs[0]||null;
+}
+function speak(text){
+  if(!("speechSynthesis" in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang="en-US";u.rate=.9;
+  const v=usVoice();if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+if("speechSynthesis" in window)speechSynthesis.getVoices();
 
 // export / import
 $("#exp").onclick=()=>{
