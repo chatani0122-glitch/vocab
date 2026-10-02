@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>英単語ノート</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--sub:#6b7385;--line:#e2e5ec;--accent:#3b6cf6;--ok:#1f9d5b;--ng:#d6453d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1e222b;--text:#e8ebf2;--sub:#98a1b5;--line:#2e3441;--accent:#6c93ff;--ok:#4cc685;--ng:#ff7a72}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:8px 0 12px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;cursor:pointer;font-size:.95rem}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+input,textarea,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.row{display:flex;gap:8px;margin-bottom:8px}
+.row>*{flex:1}
+button.btn{padding:9px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font:inherit}
+button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line)}
+.word{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.word b{font-size:1.1rem}
+.sub{color:var(--sub);font-size:.9rem}
+.ex{color:var(--sub);font-style:italic;font-size:.9rem;margin-top:2px}
+.tag{display:inline-block;font-size:.75rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--sub);margin-left:6px;cursor:pointer;user-select:none}
+.tag.done{color:var(--ok);border-color:var(--ok)}
+.acts{display:flex;gap:6px;flex-shrink:0}
+.acts button{padding:4px 8px;font-size:.8rem}
+.flash{text-align:center;min-height:200px;display:flex;flex-direction:column;justify-content:center;align-items:center;cursor:pointer}
+.flash .big{font-size:2rem;font-weight:700}
+.hidden{display:none}
+.empty{text-align:center;color:var(--sub);padding:30px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📘 英単語ノート</h1>
+  <div class="tabs">
+    <button data-t="list" class="on">単語帳</button>
+    <button data-t="quiz">復習カード</button>
+  </div>
+
+  <section id="list">
+    <div class="card">
+      <div class="row"><input id="w" placeholder="英単語 (例: ubiquitous)"><input id="m" placeholder="意味 (例: どこにでもある)"></div>
+      <div class="row"><input id="e" placeholder="例文 (任意)"></div>
+      <button class="btn" id="add">追加</button>
+    </div>
+    <div class="row">
+      <input id="q" placeholder="🔍 検索">
+      <select id="f"><option value="all">すべて</option><option value="learning">学習中</option><option value="done">覚えた</option></select>
+    </div>
+    <div id="items"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn ghost" id="exp">JSON書き出し</button>
+      <button class="btn ghost" id="imp">JSON読み込み</button>
+    </div>
+    <input type="file" id="file" accept=".json" class="hidden">
+  </section>
+
+  <section id="quiz" class="hidden">
+    <div class="sub" id="prog" style="margin-bottom:8px"></div>
+    <div class="card flash" id="fc"></div>
+    <div class="row" id="qb" style="display:none">
+      <button class="btn" style="background:var(--ng)" id="no">まだ</button>
+      <button class="btn" style="background:var(--ok)" id="yes">覚えた</button>
+    </div>
+  </section>
+</div>
+
+<script>
+const KEY="vocab-v1";
+let words=[];
+try{words=JSON.parse(localStorage.getItem(KEY))||[]}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(words))}catch(e){}};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let editId=null;
+
+function render(){
+  const q=$("#q").value.trim().toLowerCase(), f=$("#f").value;
+  const rows=words.filter(x=>(f==="all"||(f==="done")===x.done)&&(!q||(x.w+x.m+x.e).toLowerCase().includes(q)));
+  $("#items").innerHTML=rows.length?rows.map(x=>`
+    <div class="card"><div class="word"><div>
+      <b>${esc(x.w)}</b><span class="tag ${x.done?"done":""}" data-tg="${x.id}">${x.done?"覚えた":"学習中"}</span>
+      <div>${esc(x.m)}</div>${x.e?`<div class="ex">${esc(x.e)}</div>`:""}
+    </div><div class="acts">
+      <button class="btn ghost" data-sp="${x.id}">🔊</button>
+      <button class="btn ghost" data-ed="${x.id}">編集</button>
+      <button class="btn ghost" data-rm="${x.id}">削除</button>
+    </div></div></div>`).join(""):`<div class="empty">単語がありません</div>`;
+}
+
+$("#add").onclick=()=>{
+  const w=$("#w").value.trim(), m=$("#m").value.trim(), e=$("#e").value.trim();
+  if(!w||!m){return}
+  if(editId){Object.assign(words.find(x=>x.id===editId),{w,m,e});editId=null;$("#add").textContent="追加"}
+  else words.unshift({id:Date.now()+Math.random(),w,m,e,done:false});
+  ["#w","#m","#e"].forEach(s=>$(s).value="");
+  save();render();
+};
+$("#items").onclick=ev=>{
+  const t=ev.target, g=a=>words.find(x=>String(x.id)===t.dataset[a]);
+  if(t.dataset.tg){const x=g("tg");x.done=!x.done}
+  else if(t.dataset.rm){const x=g("rm");if(!confirm(`「${x.w}」を削除しますか？`))return;words=words.filter(y=>y!==x)}
+  else if(t.dataset.ed){const x=g("ed");editId=x.id;$("#w").value=x.w;$("#m").value=x.m;$("#e").value=x.e;$("#add").textContent="更新";scrollTo(0,0);return}
+  else if(t.dataset.sp){speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(g("sp").w),{lang:"en-US"}));return}
+  else return;
+  save();render();
+};
+$("#q").oninput=$("#f").onchange=render;
+
+// export / import
+$("#exp").onclick=()=>{
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(words,null,2)],{type:"application/json"}));
+  a.download="vocab.json";a.click();
+};
+$("#imp").onclick=()=>$("#file").click();
+$("#file").onchange=async ev=>{
+  try{
+    const d=JSON.parse(await ev.target.files[0].text());
+    if(!Array.isArray(d))throw 0;
+    const have=new Set(words.map(x=>x.w.toLowerCase()));
+    d.filter(x=>x&&x.w&&x.m&&!have.has(String(x.w).toLowerCase()))
+     .forEach(x=>words.push({id:Date.now()+Math.random(),w:String(x.w),m:String(x.m),e:String(x.e||""),done:!!x.done}));
+    save();render();
+  }catch(e){alert("読み込めませんでした")}
+  ev.target.value="";
+};
+
+// tabs
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  $("#list").classList.toggle("hidden",b.dataset.t!=="list");
+  $("#quiz").classList.toggle("hidden",b.dataset.t!=="quiz");
+  if(b.dataset.t==="quiz")startQuiz();
+});
+
+// quiz
+let deck=[],cur=null,shown=false;
+function startQuiz(){
+  deck=words.filter(x=>!x.done).sort(()=>Math.random()-.5);
+  next();
+}
+function next(){
+  cur=deck.shift();shown=false;
+  $("#qb").style.display="none";
+  if(!cur){$("#prog").textContent="";$("#fc").innerHTML=`<div class="empty">復習する単語がありません 🎉</div>`;return}
+  $("#prog").textContent=`残り ${deck.length+1} 語`;
+  $("#fc").innerHTML=`<div class="big">${esc(cur.w)}</div><div class="sub">タップして意味を表示</div>`;
+}
+$("#fc").onclick=()=>{
+  if(!cur||shown)return;shown=true;
+  $("#fc").innerHTML=`<div class="big">${esc(cur.w)}</div><div style="margin-top:8px">${esc(cur.m)}</div>${cur.e?`<div class="ex">${esc(cur.e)}</div>`:""}`;
+  $("#qb").style.display="flex";
+};
+$("#yes").onclick=()=>{cur.done=true;save();next()};
+$("#no").onclick=()=>{deck.push(cur);next()};
+
+render();
+</script>
+</body>
+</html>
