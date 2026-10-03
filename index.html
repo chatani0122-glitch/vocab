@@ -108,24 +108,41 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"
 let editId=null;
 const loading=new Set(), failed=new Set();
 
-// 例文の自動取得 (Free Dictionary API: 辞書に載っている実例文を使う)
+// 例文の自動取得: オープンソース/オープンデータから取得
+//  1) Free Dictionary API (オープンソース辞書)  2) Tatoeba (CC BY 2.0 FR の例文コーパス、日本語訳つき)
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const wordRe=w=>new RegExp("\\b"+w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i");
+async function fromDictionary(w){
+  const r=await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/"+encodeURIComponent(w.toLowerCase()));
+  if(!r.ok)throw 0;
+  const all=[];
+  for(const entry of await r.json())for(const mn of entry.meanings||[])for(const d of mn.definitions||[])if(d.example)all.push(d.example.trim());
+  if(!all.length)throw 0;
+  const re=wordRe(w);
+  return {e:cap(all.filter(s=>re.test(s)).sort((a,b)=>a.length-b.length)[0]||all[0]),src:"Free Dictionary API"};
+}
+async function fromTatoeba(w){
+  const u="https://tatoeba.org/en/api_v0/search?from=eng&to=jpn&trans_filter=limit&query="+encodeURIComponent(w)+"&sort=relevance";
+  const r=await fetch(u);
+  if(!r.ok)throw 0;
+  const re=wordRe(w);
+  const hits=((await r.json()).results||[]).filter(x=>x.text&&re.test(x.text)&&x.text.length<=120)
+    .sort((a,b)=>a.text.length-b.text.length);
+  if(!hits.length)throw 0;
+  const h=hits[0], tr=[].concat(...(h.translations||[])).find(t=>t&&t.lang==="jpn");
+  return {e:h.text,j:tr?tr.text:"",src:"Tatoeba (CC BY 2.0 FR)"};
+}
 async function fetchExample(x){
   loading.add(x.id);failed.delete(x.id);render();
-  try{
-    const r=await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/"+encodeURIComponent(x.w.toLowerCase()));
-    if(!r.ok)throw 0;
-    const data=await r.json();
-    const all=[];
-    for(const entry of data)for(const mn of entry.meanings||[])for(const d of mn.definitions||[])if(d.example)all.push(d.example.trim());
-    if(!all.length)throw 0;
-    // 単語を含む文を優先し、短めのものを選ぶ
-    const re=new RegExp(x.w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i");
-    const pick=(all.filter(s=>re.test(s)).sort((a,b)=>a.length-b.length)[0])||all[0];
-    x.e=pick.charAt(0).toUpperCase()+pick.slice(1);
-    save();
-  }catch(e){failed.add(x.id)}
+  let got=null;
+  for(const f of [fromTatoeba,fromDictionary]){
+    try{got=await f(x.w);break}catch(e){}
+  }
+  if(got){x.e=got.e;x.j=got.j||"";x.src=got.src;save()}else failed.add(x.id);
   loading.delete(x.id);render();
 }
+// 例文のない既存の単語は、開いたときに順番に自動取得する
+(async()=>{for(const x of words.filter(x=>!x.e&&!failed.has(x.id)))await fetchExample(x)})();
 
 function render(){
   const q=$("#q").value.trim().toLowerCase(), f=$("#f").value;
@@ -133,7 +150,7 @@ function render(){
   $("#items").innerHTML=rows.length?rows.map(x=>`
     <div class="card"><div class="word"><div>
       <b>${esc(x.w)}</b><span class="tag ${x.done?"done":""}" data-tg="${x.id}">${x.done?"覚えた":"学習中"}</span>
-      <div>${esc(x.m)}</div>${x.e?`<div class="ex">${esc(x.e)}</div>`:loading.has(x.id)?`<div class="ex">例文を取得中…</div>`:`<div class="ex"><a href="#" data-ex="${x.id}">${failed.has(x.id)?"例文が見つかりませんでした。もう一度試す":"例文を自動取得"}</a></div>`}
+      <div>${esc(x.m)}</div>${x.e?`<div class="ex">${esc(x.e)}</div>${x.j?`<div class="sub">${esc(x.j)}</div>`:""}${x.src?`<div class="sub" style="font-size:.7rem">出典: ${esc(x.src)}</div>`:""}`:loading.has(x.id)?`<div class="ex">例文を取得中…</div>`:`<div class="ex"><a href="#" data-ex="${x.id}">${failed.has(x.id)?"例文が見つかりませんでした。もう一度試す":"例文を自動取得"}</a></div>`}
     </div><div class="acts">
       <button class="btn ghost" data-sp="${x.id}">🔊</button>
       <button class="btn ghost" data-ed="${x.id}">編集</button>
@@ -264,7 +281,7 @@ function next(){
 }
 $("#fc").onclick=()=>{
   if(!cur||shown)return;shown=true;
-  $("#fc").innerHTML=`<div class="big">${esc(cur.w)}</div><div style="margin-top:8px">${esc(cur.m)}</div>${cur.e?`<div class="ex">${esc(cur.e)}</div>`:""}`;
+  $("#fc").innerHTML=`<div class="big">${esc(cur.w)}</div><div style="margin-top:8px">${esc(cur.m)}</div>${cur.e?`<div class="ex">${esc(cur.e)}</div>`:""}${cur.j?`<div class="sub">${esc(cur.j)}</div>`:""}`;
   $("#qb").style.display="flex";
 };
 $("#yes").onclick=()=>{cur.done=true;save();next()};
