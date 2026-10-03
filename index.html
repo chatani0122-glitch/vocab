@@ -65,6 +65,12 @@ button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line
       <button class="btn ghost" id="imp">JSON読み込み</button>
     </div>
     <input type="file" id="file" accept=".json" class="hidden">
+    <details class="card" style="margin-top:14px">
+      <summary>⚙️ AI例文の設定</summary>
+      <div class="sub" style="margin:8px 0">Anthropic APIキーを入れると、単語登録時にAIが例文(日本語訳つき)を作ります。キーはこのブラウザ内にだけ保存され、Anthropic以外には送られません。未設定なら Tatoeba/辞書から取得します。</div>
+      <div class="row"><input type="password" id="ak" placeholder="sk-ant-..." autocomplete="off"><button class="btn" id="aks" style="flex:0 0 auto">保存</button></div>
+      <div class="sub" id="akm"></div>
+    </details>
   </section>
 
   <section id="quiz" class="hidden">
@@ -132,11 +138,26 @@ async function fromTatoeba(w){
   const h=hits[0], tr=[].concat(...(h.translations||[])).find(t=>t&&t.lang==="jpn");
   return {e:h.text,j:tr?tr.text:"",src:"Tatoeba (CC BY 2.0 FR)"};
 }
+const AKEY="vocab-ai-key";
+const getKey=()=>{try{return localStorage.getItem(AKEY)||""}catch(e){return ""}};
+async function fromAI(w,m){
+  const key=getKey();if(!key)throw 0;
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{
+    "content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01",
+    "anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:300,messages:[{role:"user",content:
+`英単語「${w}」(意味: ${m})を使った、自然で覚えやすい英語の例文を1つ作ってください。語学学習者向けに、15語以内の平易な文で、この単語が意味の通りに使われること。次のJSONのみを出力: {"e":"英文","j":"日本語訳"}`}]})});
+  if(!r.ok)throw 0;
+  const t=(await r.json()).content.map(c=>c.text||"").join("");
+  const o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1));
+  if(!o.e||!wordRe(w).test(o.e))throw 0;
+  return {e:String(o.e),j:String(o.j||""),src:"AI生成 (Claude)"};
+}
 async function fetchExample(x){
   loading.add(x.id);failed.delete(x.id);render();
   let got=null;
-  for(const f of [fromTatoeba,fromDictionary]){
-    try{got=await f(x.w);break}catch(e){}
+  for(const f of [fromAI,fromTatoeba,fromDictionary]){
+    try{got=await f(x.w,x.m);break}catch(e){}
   }
   if(got){x.e=got.e;x.j=got.j||"";x.src=got.src;save()}else failed.add(x.id);
   loading.delete(x.id);render();
@@ -198,6 +219,15 @@ function speak(text){
   speechSynthesis.speak(u);
 }
 if("speechSynthesis" in window)speechSynthesis.getVoices();
+
+// APIキー設定
+$("#ak").value=getKey();
+$("#akm").textContent=getKey()?"設定済み: AI例文が有効です":"";
+$("#aks").onclick=()=>{
+  const k=$("#ak").value.trim();
+  try{k?localStorage.setItem(AKEY,k):localStorage.removeItem(AKEY)}catch(e){}
+  $("#akm").textContent=k?"保存しました: AI例文が有効です":"キーを削除しました";
+};
 
 // export / import
 $("#exp").onclick=()=>{
