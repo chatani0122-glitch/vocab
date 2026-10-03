@@ -32,6 +32,12 @@ button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line
 .flash .big{font-size:2rem;font-weight:700}
 .hidden{display:none}
 .empty{text-align:center;color:var(--sub);padding:30px 0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.stat b{display:block;font-size:1.4rem;color:var(--accent)}
+.bars{display:flex;gap:6px;align-items:flex-end;height:80px;margin-top:6px}
+.bars div{flex:1;text-align:center;font-size:.7rem;color:var(--sub);display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+.bars i{display:block;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px;margin-bottom:2px}
 </style>
 </head>
 <body>
@@ -40,6 +46,7 @@ button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line
   <div class="tabs">
     <button data-t="list" class="on">単語帳</button>
     <button data-t="quiz">復習カード</button>
+    <button data-t="log">学習記録</button>
   </div>
 
   <section id="list">
@@ -67,6 +74,27 @@ button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line
       <button class="btn" style="background:var(--ng)" id="no">まだ</button>
       <button class="btn" style="background:var(--ok)" id="yes">覚えた</button>
     </div>
+  </section>
+
+  <section id="log" class="hidden">
+    <div class="stats">
+      <div class="stat"><b id="sStreak">0</b><span class="sub">連続日数</span></div>
+      <div class="stat"><b id="sToday">0</b><span class="sub">今日(分)</span></div>
+      <div class="stat"><b id="sWeek">0</b><span class="sub">今週(分)</span></div>
+    </div>
+    <div class="card">
+      <div class="sub">直近7日間(分)</div>
+      <div class="bars" id="bars"></div>
+    </div>
+    <div class="card">
+      <div class="row"><input type="date" id="ld"><input type="number" id="lm" min="1" placeholder="時間(分)"></div>
+      <div class="row">
+        <select id="lc"><option>単語</option><option>文法</option><option>リスニング</option><option>リーディング</option><option>スピーキング</option><option>ライティング</option><option>その他</option></select>
+        <input id="ln" placeholder="メモ (任意)">
+      </div>
+      <button class="btn" id="ladd">記録する</button>
+    </div>
+    <div id="logs"></div>
   </section>
 </div>
 
@@ -176,10 +204,50 @@ $("#file").onchange=async ev=>{
 // tabs
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));
-  $("#list").classList.toggle("hidden",b.dataset.t!=="list");
-  $("#quiz").classList.toggle("hidden",b.dataset.t!=="quiz");
+  ["list","quiz","log"].forEach(id=>$("#"+id).classList.toggle("hidden",b.dataset.t!==id));
   if(b.dataset.t==="quiz")startQuiz();
+  if(b.dataset.t==="log")renderLog();
 });
+
+// 学習記録
+const LKEY="vocab-study-v1";
+let logs=[];
+try{logs=JSON.parse(localStorage.getItem(LKEY))||[]}catch(e){}
+const saveLogs=()=>{try{localStorage.setItem(LKEY,JSON.stringify(logs))}catch(e){}};
+const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r};
+function minutesOn(day){return logs.filter(l=>l.d===day).reduce((a,l)=>a+l.min,0)}
+function renderLog(){
+  const today=new Date(), t=ymd(today);
+  // 連続日数: 今日未記録でも昨日まで続いていれば継続中とみなす
+  let streak=0, d=minutesOn(t)?today:addDays(today,-1);
+  while(minutesOn(ymd(d))){streak++;d=addDays(d,-1)}
+  const mon=addDays(today,-((today.getDay()+6)%7)); // 週の始まりは月曜
+  let week=0;for(let i=0;i<7;i++)week+=minutesOn(ymd(addDays(mon,i)));
+  $("#sStreak").textContent=streak;$("#sToday").textContent=minutesOn(t);$("#sWeek").textContent=week;
+  const days=[...Array(7)].map((_,i)=>addDays(today,i-6));
+  const vals=days.map(x=>minutesOn(ymd(x))), max=Math.max(30,...vals);
+  $("#bars").innerHTML=days.map((x,i)=>`<div><span>${vals[i]||""}</span><i style="height:${vals[i]/max*60}px"></i>${x.getMonth()+1}/${x.getDate()}</div>`).join("");
+  const rows=[...logs].sort((a,b)=>b.d.localeCompare(a.d)||b.id-a.id);
+  $("#logs").innerHTML=rows.length?rows.map(l=>`
+    <div class="card"><div class="word"><div>
+      <b>${esc(l.d)}</b><span class="tag">${esc(l.c)}</span> ${l.min}分
+      ${l.n?`<div class="sub">${esc(l.n)}</div>`:""}
+    </div><div class="acts"><button class="btn ghost" data-lrm="${l.id}">削除</button></div></div></div>`).join(""):`<div class="empty">記録がありません</div>`;
+}
+$("#ld").value=ymd(new Date());
+$("#ladd").onclick=()=>{
+  const d=$("#ld").value, min=parseInt($("#lm").value,10);
+  if(!d||!(min>0))return;
+  logs.push({id:Date.now()+Math.random(),d,min,c:$("#lc").value,n:$("#ln").value.trim()});
+  $("#lm").value="";$("#ln").value="";
+  saveLogs();renderLog();
+};
+$("#logs").onclick=ev=>{
+  const id=ev.target.dataset.lrm;if(!id)return;
+  if(!confirm("この記録を削除しますか？"))return;
+  logs=logs.filter(l=>String(l.id)!==id);saveLogs();renderLog();
+};
 
 // quiz
 let deck=[],cur=null,shown=false;
