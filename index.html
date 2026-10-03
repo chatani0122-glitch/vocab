@@ -50,6 +50,19 @@ button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line
   </div>
 
   <section id="list">
+    <div class="card" id="aiCard">
+      <b id="aiTitle"></b>
+      <div id="aiHelp">
+        <ol class="sub" style="margin:8px 0;padding-left:20px">
+          <li><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a> を開き、「Create Key」でAPIキーを作る</li>
+          <li>下の欄に貼り付けて「保存」</li>
+          <li>「テスト」で <b>this</b> の例文が出れば完了</li>
+        </ol>
+        <div class="sub">設定後は、単語を登録するだけで例文(日本語訳つき)が自動で付きます。キーはこのブラウザにだけ保存されます。</div>
+      </div>
+      <div class="row" style="margin-top:8px"><input type="password" id="ak" placeholder="sk-ant-..." autocomplete="off"><button class="btn" id="aks" style="flex:0 0 auto">保存</button><button class="btn ghost" id="akt" style="flex:0 0 auto">テスト</button></div>
+      <div class="sub" id="akm"></div>
+    </div>
     <div class="card">
       <div class="row"><input id="w" placeholder="英単語 (例: ubiquitous)"><input id="m" placeholder="意味 (例: どこにでもある)"></div>
       <div class="row"><input id="e" placeholder="例文 (任意)"></div>
@@ -65,12 +78,6 @@ button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line
       <button class="btn ghost" id="imp">JSON読み込み</button>
     </div>
     <input type="file" id="file" accept=".json" class="hidden">
-    <details class="card" style="margin-top:14px">
-      <summary>⚙️ AI例文の設定</summary>
-      <div class="sub" style="margin:8px 0">Anthropic APIキーを入れると、単語登録時にAIが例文(日本語訳つき)を作ります。キーはこのブラウザ内にだけ保存され、Anthropic以外には送られません。未設定なら Tatoeba/辞書から取得します。</div>
-      <div class="row"><input type="password" id="ak" placeholder="sk-ant-..." autocomplete="off"><button class="btn" id="aks" style="flex:0 0 auto">保存</button></div>
-      <div class="sub" id="akm"></div>
-    </details>
   </section>
 
   <section id="quiz" class="hidden">
@@ -147,7 +154,7 @@ async function fromAI(w,m){
     "anthropic-dangerous-direct-browser-access":"true"},
     body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:300,messages:[{role:"user",content:
 `英単語「${w}」(意味: ${m})を使った、自然で覚えやすい英語の例文を1つ作ってください。語学学習者向けに、15語以内の平易な文で、この単語が意味の通りに使われること。次のJSONのみを出力: {"e":"英文","j":"日本語訳"}`}]})});
-  if(!r.ok)throw 0;
+  if(!r.ok)throw new Error(r.status===401?"APIキーが正しくありません":r.status===429?"利用上限に達しました":r.status===400?"クレジット残高を確認してください":"AIの呼び出しに失敗しました ("+r.status+")");
   const t=(await r.json()).content.map(c=>c.text||"").join("");
   const o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1));
   if(!o.e||!wordRe(w).test(o.e))throw 0;
@@ -221,12 +228,22 @@ function speak(text){
 if("speechSynthesis" in window)speechSynthesis.getVoices();
 
 // APIキー設定
-$("#ak").value=getKey();
-$("#akm").textContent=getKey()?"設定済み: AI例文が有効です":"";
+function aiStatus(){
+  const on=!!getKey();
+  $("#aiTitle").textContent=on?"✅ AI例文: 有効 (単語を登録すると自動で例文を作ります)":"🤖 AI例文を使うには、最初に1回だけ設定が必要です";
+  $("#aiHelp").style.display=on?"none":"block";
+}
+$("#ak").value=getKey();aiStatus();
 $("#aks").onclick=()=>{
   const k=$("#ak").value.trim();
   try{k?localStorage.setItem(AKEY,k):localStorage.removeItem(AKEY)}catch(e){}
-  $("#akm").textContent=k?"保存しました: AI例文が有効です":"キーを削除しました";
+  $("#akm").textContent=k?"保存しました。「テスト」で動作を確認できます":"キーを削除しました";
+  aiStatus();
+};
+$("#akt").onclick=async()=>{
+  $("#akm").textContent="テスト中…";
+  try{const o=await fromAI("this","これ");$("#akm").textContent="✅ 成功: "+o.e+" / "+o.j}
+  catch(e){$("#akm").textContent="❌ "+(e&&e.message?e.message:getKey()?"通信に失敗しました。ネットワークを確認してください":"先にAPIキーを保存してください")}
 };
 
 // export / import
