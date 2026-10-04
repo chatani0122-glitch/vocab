@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>シャドーイング</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--sub:#6b7385;--line:#e2e5ec;--accent:#3b6cf6;--ok:#1f9d5b;--ng:#d6453d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1e222b;--text:#e8ebf2;--sub:#98a1b5;--line:#2e3441;--accent:#6c93ff;--ok:#4cc685;--ng:#ff7a72}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:8px 0 12px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;font-size:.95rem}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+select,input[type=number]{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+label{display:block;font-size:.8rem;color:var(--sub);margin-bottom:2px}
+.row{display:flex;gap:8px;margin-bottom:8px}.row>*{flex:1}
+button.btn{padding:10px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit}
+button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line)}
+.sub{color:var(--sub);font-size:.9rem}
+.big{font-size:2.2rem;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.play{width:100%;padding:18px;font-size:1.2rem}
+.pl{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.pl:last-child{border:0}.pl .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.pl.cur .n{color:var(--accent);font-weight:700}
+.hidden{display:none}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:8px 0}.bar>i{display:block;height:100%;background:var(--accent);width:0}
+.badge{font-size:.8rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+.on-b{color:var(--ok);border-color:var(--ok)}
+table{width:100%;border-collapse:collapse}td{padding:6px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎧 シャドーイング</h1>
+  <div class="tabs">
+    <button data-t="play" class="on">再生</button>
+    <button data-t="log">学習記録</button>
+  </div>
+
+  <section id="play">
+    <div class="card">
+      <div class="sub" id="trk">音声ファイルを追加してください</div>
+      <div class="bar"><i id="pg"></i></div>
+      <div class="row sub"><span id="tc">0:00 / 0:00</span><span style="text-align:right" id="rc"></span></div>
+      <button class="btn play" id="pp">▶ 再生</button>
+      <div class="row" style="margin-top:8px">
+        <button class="btn ghost" id="prev">⏮ 前</button>
+        <button class="btn ghost" id="back">⏪ 5秒</button>
+        <button class="btn ghost" id="fwd">5秒 ⏩</button>
+        <button class="btn ghost" id="next">次 ⏭</button>
+      </div>
+      <div class="sub" style="margin-top:8px">
+        <span class="badge" id="wl">画面ロック防止: 未</span>
+        <span class="badge" id="sess">計測: 停止中</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div><label>リピート回数</label>
+          <select id="rep"><option>1</option><option>2</option><option>3</option><option selected>5</option><option>10</option><option value="0">無限</option></select></div>
+        <div><label>リピート間の無音(秒)</label><input type="number" id="gap" value="2" min="0" max="30" step="0.5"></div>
+        <div><label>速度</label>
+          <select id="spd"><option>0.7</option><option>0.8</option><option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option><option>1.5</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>次のファイルへ</label>
+          <select id="auto"><option value="1">自動で進む</option><option value="0">進まず繰り返す</option></select></div>
+        <div><label>最後まで行ったら</label>
+          <select id="wrap"><option value="1">最初に戻る</option><option value="0">停止</option></select></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row"><button class="btn" id="addb">＋ 音声を追加</button><button class="btn ghost" id="clr">全削除</button></div>
+      <input type="file" id="file" accept="audio/*,video/mp4" multiple class="hidden">
+      <div id="list"></div>
+    </div>
+    <audio id="au" preload="auto" playsinline></audio>
+  </section>
+
+  <section id="log" class="hidden">
+    <div class="card"><div class="sub" style="text-align:center">今日の学習時間</div><div class="big" id="today">0分</div>
+      <div class="sub" style="text-align:center" id="streak"></div></div>
+    <div class="card"><b>直近14日</b><table id="days"></table></div>
+    <div class="card"><b>ファイル別(累計)</b><table id="byTrack"></table></div>
+    <div class="row"><button class="btn ghost" id="exp">JSON書き出し</button><button class="btn ghost" id="addm">手動で追加</button><button class="btn ghost" id="rst">記録削除</button></div>
+  </section>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=s=>{s=Math.floor(s||0);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
+const fmtDur=s=>{const m=Math.round(s/60);return m>=60?Math.floor(m/60)+"時間"+(m%60)+"分":m+"分"};
+const dayKey=d=>{d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+
+/* ---------- 保存(音声はIndexedDB、記録はlocalStorage) ---------- */
+const dbp=new Promise((res,rej)=>{const r=indexedDB.open("shadow",1);r.onupgradeneeded=()=>r.result.createObjectStore("tracks",{keyPath:"id",autoIncrement:true});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const tx=async(m,f)=>{const db=await dbp;return new Promise((res,rej)=>{const t=db.transaction("tracks",m),s=t.objectStore("tracks"),r=f(s);t.oncomplete=()=>res(r.result);t.onerror=()=>rej(t.error)})};
+const LKEY="shadow-log-v1";
+let log={days:{},tracks:{}};
+try{log=JSON.parse(localStorage.getItem(LKEY))||log}catch(e){}
+const saveLog=()=>{try{localStorage.setItem(LKEY,JSON.stringify(log))}catch(e){}};
+
+/* ---------- 学習時間の計測 ----------
+   「再生ボタンを押してから停止するまで」を実時間(Date.now)で計測する。
+   リピート間の無音や、画面ロック中のタイマー停止の影響を受けない。
+   5秒ごと・画面の表示切替・終了時に保存するので、途中で落ちても失われにくい。 */
+let sessStart=null,sessTrack=null;
+function flush(){
+  if(sessStart==null)return;
+  const now=Date.now(),sec=(now-sessStart)/1000;sessStart=now;
+  if(sec<=0||sec>3600*3)return; // 異常値(端末スリープ等)は除外
+  const k=dayKey();log.days[k]=(log.days[k]||0)+sec;
+  if(sessTrack)log.tracks[sessTrack]=(log.tracks[sessTrack]||0)+sec;
+  saveLog();renderLog();
+}
+function sessionOn(){if(sessStart==null){sessStart=Date.now();$("#sess").textContent="計測: 記録中";$("#sess").classList.add("on-b")}}
+function sessionOff(){flush();sessStart=null;$("#sess").textContent="計測: 停止中";$("#sess").classList.remove("on-b")}
+setInterval(flush,5000);
+document.addEventListener("visibilitychange",()=>{flush();if(document.visibilityState==="visible"&&playing)lockOn()});
+addEventListener("pagehide",flush);
+
+/* ---------- 画面ロック防止 ---------- */
+let wl=null;
+async function lockOn(){
+  if(!("wakeLock" in navigator)){$("#wl").textContent="画面ロック防止: 非対応";return}
+  try{if(wl)return;wl=await navigator.wakeLock.request("screen");
+    wl.addEventListener("release",()=>{wl=null;$("#wl").textContent="画面ロック防止: 未";$("#wl").classList.remove("on-b")});
+    $("#wl").textContent="画面ロック防止: 有効";$("#wl").classList.add("on-b")}catch(e){$("#wl").textContent="画面ロック防止: 失敗"}
+}
+function lockOff(){if(wl){wl.release();wl=null}}
+
+/* ---------- プレイヤー ---------- */
+const au=$("#au");
+let tracks=[],cur=-1,playing=false,repDone=0,gapTimer=null,urls=new Map();
+const repMax=()=>+$("#rep").value;
+const gapMs=()=>Math.max(0,+$("#gap").value||0)*1000;
+
+async function loadTracks(){
+  tracks=await tx("readonly",s=>s.getAll());
+  tracks.forEach(t=>{if(!urls.has(t.id))urls.set(t.id,URL.createObjectURL(t.blob))});
+  renderList();if(cur<0&&tracks.length)select(0,false)
+}
+function renderList(){
+  $("#list").innerHTML=tracks.length?tracks.map((t,i)=>`<div class="pl ${i===cur?"cur":""}"><span class="n" data-i="${i}">${esc(t.name)}</span><button class="btn ghost" data-d="${t.id}">削除</button></div>`).join(""):'<div class="sub" style="padding:10px 0">まだありません</div>'
+}
+function select(i,play){
+  clearTimeout(gapTimer);cur=i;repDone=0;const t=tracks[i];
+  au.src=urls.get(t.id);au.playbackRate=+$("#spd").value;
+  $("#trk").textContent=t.name;renderList();rc();setMeta();
+  if(play)start()
+}
+function rc(){$("#rc").textContent="リピート "+(repDone+1)+" / "+(repMax()||"∞")}
+function setMeta(){
+  if(!("mediaSession" in navigator)||cur<0)return;
+  navigator.mediaSession.metadata=new MediaMetadata({title:tracks[cur].name,artist:"シャドーイング"});
+}
+async function start(){
+  if(cur<0)return;
+  sessTrack=tracks[cur].name;sessionOn();playing=true;
+  try{await au.play()}catch(e){}
+  $("#pp").textContent="⏸ 一時停止";lockOn();
+  if("mediaSession" in navigator)navigator.mediaSession.playbackState="playing"
+}
+function stop(){
+  clearTimeout(gapTimer);playing=false;au.pause();sessionOff();lockOff();
+  $("#pp").textContent="▶ 再生";
+  if("mediaSession" in navigator)navigator.mediaSession.playbackState="paused"
+}
+function nextTrack(dir){
+  if(!tracks.length)return;
+  let i=cur+dir;
+  if(i>=tracks.length||i<0){if(dir>0&&$("#wrap").value==="0"){stop();select(0,false);return}i=(i+tracks.length)%tracks.length}
+  select(i,playing)
+}
+/* 1回聞き終わったら、設定回数までリピート → 次のファイルへ */
+au.addEventListener("ended",()=>{
+  if(!playing)return;
+  repDone++;const max=repMax();
+  if(max===0||repDone<max){
+    rc();
+    const go=()=>{if(!playing)return;au.currentTime=0;au.play().catch(()=>{})};
+    gapMs()?gapTimer=setTimeout(go,gapMs()):go();
+  }else if($("#auto").value==="1"&&tracks.length>1){
+    gapTimer=setTimeout(()=>nextTrack(1),gapMs());
+  }else if($("#auto").value==="1"){
+    repDone=0;rc();gapTimer=setTimeout(()=>{au.currentTime=0;au.play().catch(()=>{})},gapMs())
+  }else{repDone=0;rc();gapTimer=setTimeout(()=>{au.currentTime=0;au.play().catch(()=>{})},gapMs())}
+});
+au.addEventListener("timeupdate",()=>{
+  $("#pg").style.width=(au.duration?au.currentTime/au.duration*100:0)+"%";
+  $("#tc").textContent=fmt(au.currentTime)+" / "+fmt(au.duration)
+});
+$("#spd").onchange=()=>au.playbackRate=+$("#spd").value;
+$("#rep").onchange=rc;
+$("#pp").onclick=()=>playing?stop():start();
+$("#prev").onclick=()=>nextTrack(-1);$("#next").onclick=()=>nextTrack(1);
+$("#back").onclick=()=>au.currentTime=Math.max(0,au.currentTime-5);
+$("#fwd").onclick=()=>au.currentTime=Math.min(au.duration||0,au.currentTime+5);
+$("#list").onclick=async e=>{
+  const i=e.target.dataset.i,d=e.target.dataset.d;
+  if(i!=null)select(+i,true);
+  if(d){if(!confirm("削除しますか?"))return;const was=tracks[cur]&&tracks[cur].id==d;await tx("readwrite",s=>s.delete(+d));
+    URL.revokeObjectURL(urls.get(+d));urls.delete(+d);if(was){stop();cur=-1;au.removeAttribute("src");$("#trk").textContent="音声ファイルを追加してください"}await loadTracks()}
+};
+$("#addb").onclick=()=>$("#file").click();
+$("#file").onchange=async e=>{
+  for(const f of e.target.files)await tx("readwrite",s=>s.add({name:f.name,blob:f}));
+  e.target.value="";await loadTracks()
+};
+$("#clr").onclick=async()=>{if(!confirm("音声を全て削除しますか?"))return;stop();await tx("readwrite",s=>s.clear());urls.forEach(u=>URL.revokeObjectURL(u));urls.clear();cur=-1;au.removeAttribute("src");$("#trk").textContent="音声ファイルを追加してください";await loadTracks()};
+
+/* ロック画面・イヤホンの操作 */
+if("mediaSession" in navigator){
+  const ms=navigator.mediaSession;
+  ms.setActionHandler("play",start);ms.setActionHandler("pause",stop);
+  ms.setActionHandler("previoustrack",()=>nextTrack(-1));ms.setActionHandler("nexttrack",()=>nextTrack(1));
+  try{ms.setActionHandler("seekbackward",()=>au.currentTime=Math.max(0,au.currentTime-5));ms.setActionHandler("seekforward",()=>au.currentTime+=5)}catch(e){}
+}
+
+/* ---------- 学習記録 ---------- */
+function renderLog(){
+  $("#today").textContent=fmtDur(log.days[dayKey()]||0);
+  let s=0;const d=new Date();if(!(log.days[dayKey(d)]>=60))d.setDate(d.getDate()-1);
+  while(log.days[dayKey(d)]>=60){s++;d.setDate(d.getDate()-1)}
+  $("#streak").textContent=s?"🔥 "+s+"日連続":"";
+  let h="";const t=new Date();
+  for(let i=0;i<14;i++){const k=dayKey(t);h+=`<tr><td>${k}</td><td>${fmtDur(log.days[k]||0)}</td></tr>`;t.setDate(t.getDate()-1)}
+  $("#days").innerHTML=h;
+  const tr=Object.entries(log.tracks).sort((a,b)=>b[1]-a[1]);
+  $("#byTrack").innerHTML=tr.length?tr.map(([n,v])=>`<tr><td>${esc(n)}</td><td>${fmtDur(v)}</td></tr>`).join(""):'<tr><td class="sub">まだありません</td></tr>'
+}
+$("#exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(log,null,1)],{type:"application/json"}));a.download="shadowing-log.json";a.click()};
+$("#addm").onclick=()=>{const m=+prompt("今日に追加する分数(別の場所で勉強した分など)");if(m>0){log.days[dayKey()]=(log.days[dayKey()]||0)+m*60;saveLog();renderLog()}};
+$("#rst").onclick=()=>{if(confirm("学習記録を全て削除しますか?")){log={days:{},tracks:{}};saveLog();renderLog()}};
+
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  $("#play").classList.toggle("hidden",b.dataset.t!=="play");$("#log").classList.toggle("hidden",b.dataset.t!=="log")
+});
+renderLog();loadTracks();
+</script>
+</body>
+</html>
