@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2×2 トレーニング</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--sub:#6b7385;--line:#e2e5ec;--accent:#3b6cf6;--ok:#1f9d5b;--ng:#d6453d;--warn:#c98a10}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1e222b;--text:#e8ebf2;--sub:#98a1b5;--line:#2e3441;--accent:#6c93ff;--ok:#4cc685;--ng:#ff7a72;--warn:#e0a93a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:8px 0 4px}
+h2{font-size:1.05rem;margin:0 0 8px}
+h3{font-size:.95rem;margin:12px 0 4px}
+.tabs{display:flex;gap:6px;margin:12px 0 14px}
+.tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;cursor:pointer;font-size:.95rem}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+select,input[type=password],input[type=text]{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row>select{flex:1;min-width:140px}
+button.btn{padding:9px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font:inherit}
+button.btn:disabled{opacity:.5;cursor:default}
+button.ghost{background:transparent;color:var(--sub);border:1px solid var(--line);padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit}
+.theme{font-size:1.5rem;font-weight:700;line-height:1.4;margin:6px 0}
+.sub{color:var(--sub);font-size:.9rem}
+.hidden{display:none!important}
+.empty{text-align:center;color:var(--sub);padding:24px 0}
+details{margin-top:10px}
+summary{cursor:pointer;color:var(--sub);font-size:.9rem}
+ul{margin:4px 0 0;padding-left:1.2em}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:10px 0}
+.thumb{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg)}
+.thumb img{display:block;width:100%;height:120px;object-fit:cover}
+.thumb button{position:absolute;top:4px;right:4px;border:0;background:rgba(0,0,0,.6);color:#fff;border-radius:99px;width:24px;height:24px;cursor:pointer}
+.err{color:var(--ng);font-size:.9rem;margin-top:8px;white-space:pre-wrap}
+.fw{border-left:4px solid var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:8px 0;font-size:.85rem}
+.grid2>div{border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--bg);min-height:48px}
+.axis{display:flex;justify-content:space-between;font-size:.8rem;color:var(--sub);margin:0 2px}
+.scores{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 12px;margin:6px 0;font-size:.9rem}
+.bar{display:inline-block;letter-spacing:2px;color:var(--accent)}
+.good li::marker{color:var(--ok)}
+.imp li::marker{color:var(--warn)}
+.stat{display:flex;gap:16px;font-size:.9rem;color:var(--sub);margin:4px 0 0}
+.stat b{color:var(--text);font-size:1.1rem}
+.hist-item{cursor:pointer}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧭 2×2 トレーニング</h1>
+  <div class="sub">1つのお題で、切り口の違う2×2を3つ。書いて、撮って、フィードバック。</div>
+  <div class="stat"><span>連続 <b id="streak">0</b> 日</span><span>通算 <b id="total">0</b> 回</span></div>
+
+  <div class="tabs">
+    <button data-t="today" class="on">今日のお題</button>
+    <button data-t="fb">フィードバック</button>
+    <button data-t="hist">履歴</button>
+    <button data-t="set">設定</button>
+  </div>
+
+  <!-- お題 -->
+  <section id="p-today">
+    <div class="card">
+      <div class="row">
+        <select id="genre">
+          <option value="">ジャンル：おまかせ</option>
+          <option>ビジネス・仕事</option>
+          <option>日常・暮らし</option>
+          <option>社会・ニュース</option>
+          <option>キャリア・自己成長</option>
+          <option>テクノロジー・AI</option>
+          <option>お金・経済</option>
+          <option>健康・習慣</option>
+          <option>人間関係・コミュニケーション</option>
+        </select>
+        <button class="btn" id="gen">お題を作る</button>
+      </div>
+      <div id="genErr" class="err"></div>
+    </div>
+
+    <div id="themeBox" class="card hidden">
+      <div class="sub" id="themeDate"></div>
+      <div class="theme" id="themeText"></div>
+      <div id="themeCtx" class="sub"></div>
+      <h3>ルール</h3>
+      <ul class="sub">
+        <li>このお題で <b>切り口（軸）の違う2×2を3つ</b> 書く</li>
+        <li>各フレームに「タイトル／縦軸・横軸の両端／4象限のラベルと具体例」を書く</li>
+        <li>書けたら「フィードバック」タブで写真を送る</li>
+      </ul>
+      <details>
+        <summary>行き詰まったら：軸の切り口ヒントを見る</summary>
+        <ul id="angles"></ul>
+      </details>
+      <div style="margin-top:12px"><button class="ghost" id="goFb">書けた → 写真を送る</button></div>
+    </div>
+  </section>
+
+  <!-- フィードバック -->
+  <section id="p-fb" class="hidden">
+    <div class="card">
+      <h2>手書きの2×2を撮影して送る</h2>
+      <div class="sub">お題：<b id="fbTheme">（まだお題がありません）</b></div>
+      <div class="sub">3つを1枚に収めても、1枚ずつ（最大4枚）でもOK。字が読み取れるよう、明るい場所でまっすぐ撮ると精度が上がります。</div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="row">
+        <input type="file" id="file" accept="image/*" multiple class="hidden">
+        <button class="ghost" id="pick">📷 写真を追加</button>
+        <button class="btn" id="analyze" disabled>フィードバックをもらう</button>
+      </div>
+      <div id="fbErr" class="err"></div>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <!-- 履歴 -->
+  <section id="p-hist" class="hidden">
+    <div id="histList"></div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="p-set" class="hidden">
+    <div class="card">
+      <h2>Anthropic APIキー</h2>
+      <div class="sub" style="margin-bottom:8px">お題の生成と写真の読み取りに使います。キーはこの端末のブラウザ（localStorage）にだけ保存され、Anthropic以外には送信されません。</div>
+      <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off">
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="saveKey">保存</button>
+        <button class="ghost" id="clearKey">削除</button>
+        <span id="keyMsg" class="sub"></span>
+      </div>
+      <div class="sub" style="margin-top:10px">キー未設定でも、内蔵のお題リストからお題を出せます（フィードバックにはキーが必要）。</div>
+    </div>
+    <div class="card">
+      <h2>データ</h2>
+      <button class="ghost" id="wipe">履歴をすべて削除</button>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+const MODEL = "claude-sonnet-5-5";
+const LS = { key: "m22.key", hist: "m22.hist", cur: "m22.cur" };
+const $ = id => document.getElementById(id);
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+// APIキーは文字列のまま保存（JSON化しない）
+const getKey = () => { try { return localStorage.getItem(LS.key) || ""; } catch { return ""; } };
+
+const FALLBACK = [
+  ["リモートワークを続けるべきか", "働き方", ["成果の出しやすさ × 関係の築きやすさ", "個人の自由度 × 組織の一体感", "コスト × 得られる効果"]],
+  ["新しいスマホアプリを使い続けるかやめるか", "日常", ["使う頻度 × 満足度", "習慣化の難しさ × 得られる価値", "代替手段の有無 × 乗り換えコスト"]],
+  ["転職を考えるときの判断", "キャリア", ["やりがい × 待遇", "市場価値 × 現職での成長", "リスク × リターン"]],
+  ["朝の時間の使い方", "習慣", ["所要時間 × 効果の大きさ", "続けやすさ × 一日への影響", "心身への効果 × 仕事への効果"]],
+  ["コンビニの新商品を企画する", "ビジネス", ["顧客の年代 × 利用シーン", "原価 × 独自性", "話題性 × 継続購入のされやすさ"]],
+  ["生成AIを職場に導入する", "テクノロジー", ["業務への効果 × 導入の手間", "リスクの大きさ × 発生確率", "対象者の習熟度 × 業務の定型度"]],
+  ["貯金と投資のバランス", "お金", ["リスク × 流動性", "期待リターン × 必要な知識量", "短期目標 × 長期目標"]],
+  ["友人との関係の見直し", "人間関係", ["会う頻度 × 満足度", "自分が与える × 相手から得る", "価値観の近さ × 付き合いの長さ"]],
+  ["ふるさと納税の返礼品の選び方", "お金", ["お得度 × 満足度", "実用性 × 楽しさ", "届くまでの早さ × 保存のしやすさ"]],
+  ["会議を減らすには", "仕事", ["必要性 × 参加人数", "緊急度 × 重要度", "情報共有 × 意思決定"]],
+];
+
+// ---------- タブ ----------
+const panes = ["today", "fb", "hist", "set"];
+function show(t) {
+  panes.forEach(p => $("p-" + p).classList.toggle("hidden", p !== t));
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  if (t === "hist") renderHist();
+  if (t === "fb") syncFb();
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => show(b.dataset.t));
+$("goFb").onclick = () => show("fb");
+
+// ---------- 共通 ----------
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const hist = () => store.get(LS.hist, []);
+
+async function callClaude(content, maxTokens) {
+  const key = getKey();
+  if (!key) throw new Error("APIキーが未設定です。「設定」タブで入力してください。");
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, messages: [{ role: "user", content }] }),
+  });
+  if (!res.ok) {
+    let msg = "";
+    try { msg = (await res.json()).error.message; } catch {}
+    throw new Error(`APIエラー (${res.status}) ${msg}`);
+  }
+  const data = await res.json();
+  return data.content.filter(b => b.type === "text").map(b => b.text).join("");
+}
+
+function parseJson(text) {
+  const s = text.indexOf("{"), e = text.lastIndexOf("}");
+  if (s < 0 || e < 0) throw new Error("応答を解釈できませんでした。もう一度お試しください。");
+  return JSON.parse(text.slice(s, e + 1));
+}
+
+// ---------- お題 ----------
+function renderTheme(c) {
+  if (!c) { $("themeBox").classList.add("hidden"); return; }
+  $("themeBox").classList.remove("hidden");
+  $("themeDate").textContent = c.date + (c.genre ? "・" + c.genre : "");
+  $("themeText").textContent = c.theme;
+  $("themeCtx").textContent = c.context || "";
+  const ul = $("angles"); ul.replaceChildren();
+  (c.angles || []).forEach(a => ul.appendChild(el("li", null, a)));
+}
+
+$("gen").onclick = async () => {
+  const btn = $("gen"), genre = $("genre").value;
+  $("genErr").textContent = "";
+  const recent = hist().slice(0, 30).map(h => h.theme);
+  const cur = store.get(LS.cur, null);
+  if (cur) recent.unshift(cur.theme);
+  let item;
+  if (getKey()) {
+    btn.disabled = true; btn.replaceChildren(el("span", "spin"), document.createTextNode("生成中"));
+    try {
+      const prompt = `2×2マトリクス（2軸4象限）の思考トレーニング用のお題を1つ作ってください。
+条件:
+- 1つのお題について、切り口（軸の組み合わせ）の異なる2×2を3つ作れる、発想の広がるお題にする
+- 誰でも身近に考えられ、かつ「何と何を軸にするか」で考えがいがあるもの（抽象的すぎず、専門知識が不要）
+- お題は40字以内の名詞句または問いかけ
+- ジャンル: ${genre || "指定なし（毎回バラけるように）"}
+- 次の最近のお題とは被らない/似ない: ${recent.length ? recent.join(" / ") : "なし"}
+- ヒントは「軸の切り口」を3つ、各 "縦軸候補 × 横軸候補" の形で。答えを押し付けない程度に
+
+JSONのみで出力:
+{"theme":"...","context":"状況や考える視点の補足を1〜2文","angles":["...","...","..."]}`;
+      item = parseJson(await callClaude(prompt, 800));
+      if (!item.theme) throw new Error("お題を取得できませんでした。");
+    } catch (e) {
+      $("genErr").textContent = String(e.message || e);
+    } finally {
+      btn.disabled = false; btn.textContent = "お題を作る";
+    }
+    if (!item) return;
+  } else {
+    const pool = FALLBACK.filter(f => !recent.includes(f[0]));
+    const f = (pool.length ? pool : FALLBACK)[Math.floor(Math.random() * (pool.length || FALLBACK.length))];
+    item = { theme: f[0], context: "", angles: f[2], genre: f[1] };
+  }
+  const c = { date: todayStr(), genre: genre || item.genre || "", theme: String(item.theme), context: String(item.context || ""), angles: (item.angles || []).map(String).slice(0, 3) };
+  store.set(LS.cur, c);
+  files.length = 0; renderThumbs();
+  renderTheme(c);
+};
+
+// ---------- 画像 ----------
+const files = []; // {url, b64}
+const MAX_IMG = 4;
+
+function resize(file, max = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * r); c.height = Math.round(img.naturalHeight * r);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const dataUrl = c.toDataURL("image/jpeg", 0.85);
+      resolve({ url: dataUrl, b64: dataUrl.split(",")[1] });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("画像を読み込めませんでした（形式が未対応の可能性があります）")); };
+    img.src = url;
+  });
+}
+
+function renderThumbs() {
+  const box = $("thumbs"); box.replaceChildren();
+  files.forEach((f, i) => {
+    const t = el("div", "thumb"); const im = el("img"); im.src = f.url; im.alt = `写真${i + 1}`;
+    const x = el("button", null, "×"); x.setAttribute("aria-label", "削除"); x.onclick = () => { files.splice(i, 1); renderThumbs(); };
+    t.append(im, x); box.appendChild(t);
+  });
+  $("analyze").disabled = !files.length;
+}
+
+$("pick").onclick = () => $("file").click();
+$("file").onchange = async e => {
+  $("fbErr").textContent = "";
+  for (const f of [...e.target.files]) {
+    if (files.length >= MAX_IMG) { $("fbErr").textContent = `写真は最大${MAX_IMG}枚までです。`; break; }
+    try { files.push(await resize(f)); } catch (err) { $("fbErr").textContent = err.message; }
+  }
+  e.target.value = ""; renderThumbs();
+};
+
+function syncFb() {
+  const c = store.get(LS.cur, null);
+  $("fbTheme").textContent = c ? c.theme : "（まだお題がありません。先にお題を作ってください）";
+}
+
+// ---------- フィードバック ----------
+const SCORE_LABELS = { axes: "軸の質", coverage: "象限の網羅性", specific: "具体性", insight: "示唆の深さ" };
+
+function stars(n) { n = Math.max(0, Math.min(5, Math.round(+n) || 0)); return "★".repeat(n) + "☆".repeat(5 - n); }
+function list(cls, items) {
+  const ul = el("ul", cls); (items || []).forEach(i => ul.appendChild(el("li", null, String(i)))); return ul;
+}
+
+function renderFeedback(fb, theme) {
+  const root = $("result"); root.replaceChildren();
+  (fb.frameworks || []).forEach((f, i) => {
+    const card = el("div", "card fw");
+    card.appendChild(el("h2", null, `フレームワーク ${i + 1}：${f.title || "（タイトルなし）"}`));
+    const q = f.quadrants || {};
+    const ax = f.axes || {};
+    card.appendChild(el("div", "sub", `縦軸：${ax.y_high || "?"}（上）↔ ${ax.y_low || "?"}（下）`));
+    const top = el("div", "axis"); top.append(el("span", null, `← ${ax.x_low || "?"}`), el("span", null, `${ax.x_high || "?"} →`)); card.appendChild(top);
+    const g = el("div", "grid2");
+    [["top_left", "左上"], ["top_right", "右上"], ["bottom_left", "左下"], ["bottom_right", "右下"]].forEach(([k, lab]) => {
+      const cell = el("div"); cell.appendChild(el("b", null, `${lab}：${(q[k] && q[k].label) || "—"}`));
+      const ex = q[k] && q[k].items && q[k].items.length ? q[k].items.join("、") : "";
+      if (ex) cell.appendChild(el("div", "sub", ex)); g.appendChild(cell);
+    });
+    card.appendChild(g);
+    if (f.reading_note) card.appendChild(el("div", "sub", "読み取りメモ：" + f.reading_note));
+    const sc = el("div", "scores");
+    Object.keys(SCORE_LABELS).forEach(k => {
+      const d = el("div"); d.append(document.createTextNode(SCORE_LABELS[k] + " "), el("span", "bar", stars(f.scores && f.scores[k]))); sc.appendChild(d);
+    });
+    card.appendChild(sc);
+    card.appendChild(el("h3", null, "良かった点")); card.appendChild(list("good", f.good));
+    card.appendChild(el("h3", null, "改善点")); card.appendChild(list("imp", f.improve));
+    if (f.rewrite) { card.appendChild(el("h3", null, "こうするともっと良くなる")); card.appendChild(el("div", null, f.rewrite)); }
+    root.appendChild(card);
+  });
+  const o = fb.overall || {};
+  const all = el("div", "card");
+  all.appendChild(el("h2", null, "3つ通しての総評"));
+  if (o.summary) all.appendChild(el("p", null, o.summary));
+  if (o.variety) { all.appendChild(el("h3", null, "切り口のバリエーション")); all.appendChild(el("p", null, o.variety)); }
+  if (o.next_focus) { all.appendChild(el("h3", null, "次回のテーマ")); all.appendChild(el("p", null, o.next_focus)); }
+  root.appendChild(all);
+}
+
+function avgScore(fb) {
+  const v = []; (fb.frameworks || []).forEach(f => Object.keys(SCORE_LABELS).forEach(k => { const n = +(f.scores && f.scores[k]); if (n) v.push(n); }));
+  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : 0;
+}
+
+$("analyze").onclick = async () => {
+  const c = store.get(LS.cur, null);
+  $("fbErr").textContent = "";
+  if (!c) { $("fbErr").textContent = "先に「今日のお題」でお題を作ってください。"; return; }
+  if (!getKey()) { $("fbErr").textContent = "フィードバックにはAPIキーが必要です。「設定」タブで入力してください。"; return; }
+  const btn = $("analyze"); btn.disabled = true; btn.replaceChildren(el("span", "spin"), document.createTextNode("読み取り中"));
+  try {
+    const content = [];
+    files.forEach((f, i) => {
+      content.push({ type: "text", text: `写真${i + 1}:` });
+      content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f.b64 } });
+    });
+    content.push({ type: "text", text: `あなたは2×2マトリクス（2軸4象限）の思考トレーニングのコーチです。
+お題「${c.theme}」${c.context ? `（${c.context}）` : ""}について、ユーザーが紙に手書きした2×2が上の写真に写っています。
+ルール：1つのお題につき、切り口の異なる2×2を3つ作る。写真1枚に複数あっても、複数枚に分かれていてもよい。
+
+手順:
+1. 手書き文字を丁寧に読み取り、各フレームワークのタイトル、縦軸・横軸の両端の言葉、4象限のラベルと書かれた具体例を書き起こす。読めない箇所は推測せず「（判読不能）」とし、reading_noteに書く。フレームワークが3つ未満なら見つかった分だけ返す。
+2. 各フレームワークを次の観点で1〜5点で採点: axes=軸の質（2軸が独立しており、お題の本質を捉えた対比になっているか）、coverage=象限の網羅性（4象限すべてが埋まり、象限ごとの意味の違いが明確か）、specific=具体性（具体例が実在・実感を伴うか）、insight=示唆の深さ（図から「だから何をすべきか／何が言えるか」が導けるか）。甘すぎず、辛すぎず。
+3. 良かった点を1〜3個、改善点を1〜3個（どう直せばよいかが分かる具体的な書き方で）、さらに改善した軸や象限の案を rewrite に1〜2文で示す。
+4. 全体として: 3つの切り口が互いに十分違うか（似た軸の使い回しがないか）を variety に、次回意識すべきことを next_focus に1つだけ、総評を summary に2〜3文で。
+
+トーンは前向きで具体的に。日本語で。JSONのみを出力:
+{"frameworks":[{"title":"","axes":{"y_high":"","y_low":"","x_low":"","x_high":""},"quadrants":{"top_left":{"label":"","items":[]},"top_right":{"label":"","items":[]},"bottom_left":{"label":"","items":[]},"bottom_right":{"label":"","items":[]}},"reading_note":"","scores":{"axes":0,"coverage":0,"specific":0,"insight":0},"good":[],"improve":[],"rewrite":""}],"overall":{"summary":"","variety":"","next_focus":""}}` });
+    const fb = parseJson(await callClaude(content, 4000));
+    renderFeedback(fb, c.theme);
+    const h = hist();
+    h.unshift({ id: Date.now(), date: todayStr(), theme: c.theme, context: c.context, avg: avgScore(fb), fb, thumb: files[0] ? await thumb(files[0].url) : "" });
+    store.set(LS.hist, h.slice(0, 60));
+    updateStats();
+    $("result").scrollIntoView({ behavior: "smooth" });
+  } catch (e) {
+    $("fbErr").textContent = String(e.message || e);
+  } finally {
+    btn.textContent = "フィードバックをもらう"; btn.disabled = !files.length;
+  }
+};
+
+function thumb(dataUrl) {
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => {
+      const r = 160 / Math.max(im.naturalWidth, im.naturalHeight), c = document.createElement("canvas");
+      c.width = Math.round(im.naturalWidth * r); c.height = Math.round(im.naturalHeight * r);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL("image/jpeg", 0.6));
+    };
+    im.onerror = () => res(""); im.src = dataUrl;
+  });
+}
+
+// ---------- 履歴・統計 ----------
+function updateStats() {
+  const h = hist(); $("total").textContent = h.length;
+  const days = new Set(h.map(x => x.date)); let n = 0; const d = new Date();
+  if (!days.has(todayStr())) d.setDate(d.getDate() - 1);
+  for (;;) {
+    const s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (!days.has(s)) break; n++; d.setDate(d.getDate() - 1);
+  }
+  $("streak").textContent = n;
+}
+
+function renderHist() {
+  const box = $("histList"); box.replaceChildren();
+  const h = hist();
+  if (!h.length) { box.appendChild(el("div", "empty", "まだ履歴がありません")); return; }
+  h.forEach(x => {
+    const card = el("div", "card hist-item");
+    const r = el("div", "row"); r.style.flexWrap = "nowrap";
+    if (x.thumb) { const im = el("img"); im.src = x.thumb; im.alt = ""; im.style.cssText = "width:56px;height:56px;object-fit:cover;border-radius:8px;flex:none"; r.appendChild(im); }
+    const t = el("div"); t.style.flex = "1";
+    t.append(el("div", "sub", `${x.date}・平均 ${x.avg || "-"} / 5`), el("b", null, x.theme));
+    r.appendChild(t); card.appendChild(r);
+    card.onclick = () => { show("fb"); renderFeedback(x.fb, x.theme); $("result").scrollIntoView(); };
+    box.appendChild(card);
+  });
+}
+
+// ---------- 設定 ----------
+$("saveKey").onclick = () => {
+  const v = $("key").value.trim();
+  if (!v) { $("keyMsg").textContent = "キーを入力してください"; return; }
+  try { localStorage.setItem(LS.key, v); $("keyMsg").textContent = "保存しました"; $("key").value = ""; } catch { $("keyMsg").textContent = "保存できませんでした"; }
+};
+$("clearKey").onclick = () => { try { localStorage.removeItem(LS.key); } catch {} $("keyMsg").textContent = "削除しました"; };
+$("wipe").onclick = () => { if (confirm("履歴をすべて削除しますか？")) { store.del(LS.hist); updateStats(); renderHist(); } };
+
+// ---------- 起動 ----------
+(function init() {
+  const c = store.get(LS.cur, null);
+  renderTheme(c); updateStats();
+  if (!getKey()) $("keyMsg").textContent = "未設定";
+})();
+</script>
+</body>
+</html>
