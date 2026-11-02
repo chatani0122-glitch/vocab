@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>冷蔵庫から献立</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1d2330;--sub:#6b7385;--line:#e2e5ec;--accent:#e0742b;--accent-t:#fff;--ok:#1f9d5b;--ng:#d6453d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1e222b;--text:#e8ebf2;--sub:#98a1b5;--line:#2e3441;--accent:#f0944f;--accent-t:#000;--ok:#4cc685;--ng:#ff7a72}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:8px 0 12px}
+h2{font-size:1rem;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+.row{display:flex;gap:8px;align-items:center}
+.row>input{flex:1}
+button{font:inherit;cursor:pointer}
+.btn{padding:9px 14px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-t);font-weight:600}
+.btn.big{width:100%;padding:13px;font-size:1.05rem;margin-top:4px}
+.ghost{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:.85rem}
+.seg{display:flex;gap:6px}
+.seg button{flex:1;padding:12px 0;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;font-size:1rem}
+.seg button.on{background:var(--accent);color:var(--accent-t);border-color:var(--accent);font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:var(--bg);font-size:.9rem}
+.chip.add{cursor:pointer;color:var(--sub)}
+.chip.unk{border-style:dashed}
+.chip .x{cursor:pointer;color:var(--sub);margin-left:2px}
+.sub{color:var(--sub);font-size:.85rem}
+.day{font-weight:700;margin:2px 0 8px}
+.dish{padding:10px 0;border-top:1px solid var(--line)}
+.dish:first-of-type{border-top:0}
+.dish-h{display:flex;gap:8px;align-items:center}
+.dish-h .name{flex:1;font-weight:600}
+.type{font-size:.72rem;padding:1px 8px;border-radius:99px;background:var(--accent);color:var(--accent-t);font-weight:700}
+.ing{font-size:.85rem;color:var(--sub);margin:4px 0 0}
+.ing .have{color:var(--ok);font-weight:600}
+.steps{font-size:.88rem;margin:6px 0 0;padding-left:1.3em}
+details summary{cursor:pointer;color:var(--sub);font-size:.85rem;margin-top:4px}
+.shop li{display:flex;gap:8px;padding:5px 0}
+.shop ul{list-style:none;margin:0;padding:0}
+.shop label{flex:1;display:flex;gap:8px;align-items:center}
+.shop input{width:auto}
+.shop .done{text-decoration:line-through;color:var(--sub)}
+.empty{text-align:center;color:var(--sub);padding:14px 0}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🍳 冷蔵庫から献立</h1>
+
+  <div class="card">
+    <h2>① 何人分？</h2>
+    <div class="seg" id="people"></div>
+  </div>
+
+  <div class="card">
+    <h2>② 冷蔵庫にある食材</h2>
+    <div class="row">
+      <input id="inp" placeholder="例：ほうれん草、なす、豚肉" enterkeyhint="done">
+      <button class="btn" id="addBtn">追加</button>
+    </div>
+    <div class="sub" style="margin-top:4px">「、」や「,」区切りでまとめて入力できます</div>
+    <div class="chips" id="fridge"></div>
+    <div class="sub" style="margin-top:10px">よく使う食材（タップで追加）</div>
+    <div class="chips" id="quick"></div>
+    <div class="sub" style="margin-top:10px">※ 調味料・油・だし・カレールウなどは常備している前提です</div>
+  </div>
+
+  <div class="card">
+    <h2>③ 何日分の夕食？</h2>
+    <div class="seg" id="days"></div>
+    <button class="btn big" id="gen">献立をつくる</button>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+// ===== 食材の正規化 =====
+const kata2hira = s => s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+const norm = s => kata2hira(String(s).trim().toLowerCase().replace(/\s+/g, ''));
+
+// 正式名 : 別名
+const ALIAS = {
+  '玉ねぎ':['たまねぎ','玉葱','オニオン'],
+  'ねぎ':['長ねぎ','青ねぎ','白ねぎ','万能ねぎ','小ねぎ','長ネギ'],
+  'ほうれん草':['ほうれんそう','ホウレンソウ'],
+  '小松菜':['こまつな'],
+  'キャベツ':['きゃべつ'],
+  'にんじん':['人参','ニンジン'],
+  'じゃがいも':['ジャガイモ','じゃが芋','ポテト'],
+  '大根':['だいこん'],
+  'なす':['茄子','ナス'],
+  'ピーマン':['ぴーまん'],
+  'トマト':['ミニトマト','プチトマト'],
+  'きゅうり':['胡瓜','キュウリ'],
+  'ブロッコリー':[],
+  'かぼちゃ':['南瓜','カボチャ'],
+  'ごぼう':['牛蒡'],
+  'もやし':['モヤシ'],
+  'しめじ':['ぶなしめじ','きのこ','キノコ','えのき','エノキ','まいたけ','しいたけ','椎茸'],
+  'なめこ':[],
+  'わかめ':['ワカメ','乾燥わかめ'],
+  '豚肉':['豚こま','豚バラ','豚ロース','豚こま肉','豚薄切り','ぶた肉','ぶたにく','豚'],
+  '鶏肉':['鶏もも','鶏むね','ささみ','とり肉','とりにく','手羽','鶏','鶏もも肉','鶏むね肉'],
+  '牛肉':['牛こま','牛薄切り','ぎゅうにく','牛','牛バラ'],
+  'ひき肉':['挽き肉','合いびき','合い挽き','豚ひき肉','鶏ひき肉','ミンチ','ひきにく','合挽き肉'],
+  'ベーコン':[],
+  '鮭':['サケ','さけ','生鮭','塩鮭','サーモン'],
+  'さば':['サバ','鯖'],
+  'ぶり':['ブリ','鰤'],
+  'えび':['エビ','海老'],
+  'ツナ缶':['ツナ','シーチキン'],
+  '卵':['たまご','玉子','タマゴ','エッグ'],
+  '豆腐':['とうふ','木綿豆腐','絹豆腐','絹ごし豆腐'],
+  '油揚げ':['あぶらあげ','油あげ'],
+  'うどん':['ウドン'],
+  'ごはん':['ご飯','米','白米','ライス']
+};
+const CANON = Object.keys(ALIAS);
+const aliasMap = new Map();
+CANON.forEach(c => { aliasMap.set(norm(c), c); ALIAS[c].forEach(a => aliasMap.set(norm(a), c)); });
+function resolve(raw){
+  const n = norm(raw);
+  if (!n) return null;
+  if (aliasMap.has(n)) return {name: aliasMap.get(n), known: true};
+  if (n.length >= 3) {
+    for (const [k, c] of aliasMap) if (k.length >= 3 && (n.includes(k) || k.includes(n))) return {name: c, known: true};
+  }
+  return {name: raw.trim(), known: false};
+}
+
+// ===== レシピ =====
+// [種別, 名前, 調理分, [[食材,1人分,単位]...], 調味料, [手順]]
+const R = [
+ // --- 主菜 ---
+ ['主菜','豚の生姜焼き',15,[['豚肉',100,'g'],['玉ねぎ',0.25,'個']],'しょうゆ・みりん・酒・おろし生姜',['玉ねぎは薄切りにする','フライパンで豚肉と玉ねぎを炒める','合わせ調味料を加えて照りが出るまで絡める']],
+ ['主菜','鶏の照り焼き',20,[['鶏肉',120,'g'],['ねぎ',0.3,'本']],'しょうゆ・みりん・酒・砂糖',['鶏肉を皮目から焼く','ねぎを加えて両面に焼き色をつける','調味料を加えて煮絡める']],
+ ['主菜','肉じゃが',30,[['牛肉',70,'g'],['じゃがいも',1,'個'],['玉ねぎ',0.5,'個'],['にんじん',0.3,'本']],'しょうゆ・みりん・砂糖・だし',['野菜を食べやすく切る','肉と野菜を油で炒める','だしと調味料を入れ、落とし蓋で15分煮る']],
+ ['主菜','麻婆豆腐',15,[['豆腐',0.5,'丁'],['ひき肉',60,'g'],['ねぎ',0.2,'本']],'豆板醤・味噌・しょうゆ・片栗粉・にんにく',['ひき肉とにんにくを炒める','調味料と水を入れ、豆腐を加えて煮る','ねぎを入れ、水溶き片栗粉でとろみをつける']],
+ ['主菜','ハンバーグ',30,[['ひき肉',120,'g'],['玉ねぎ',0.25,'個'],['卵',0.25,'個']],'塩こしょう・パン粉・ケチャップ・ソース',['みじん切りの玉ねぎ、ひき肉、卵、パン粉を粘りが出るまで混ぜる','成形して両面を焼き、蒸し焼きにする','ケチャップとソースでソースを作りかける']],
+ ['主菜','鮭のバターしょうゆきのこ',15,[['鮭',1,'切れ'],['しめじ',0.3,'パック']],'バター・しょうゆ・塩こしょう',['鮭に塩こしょうをして焼く','しめじをバターで炒める','しょうゆで味付けして鮭にのせる']],
+ ['主菜','さばの味噌煮',20,[['さば',1,'切れ'],['ねぎ',0.2,'本']],'味噌・みりん・酒・砂糖・生姜',['調味料と生姜を煮立てる','さばを入れて落とし蓋をし10分煮る','ねぎを添える']],
+ ['主菜','豚肉とほうれん草の炒め物',15,[['豚肉',80,'g'],['ほうれん草',0.3,'束']],'塩こしょう・しょうゆ・ごま油',['ほうれん草は4cm幅に切る','豚肉を炒め、ほうれん草を加えてさっと炒める','塩こしょうとしょうゆで味を調える']],
+ ['主菜','親子丼',15,[['鶏肉',80,'g'],['卵',1.5,'個'],['玉ねぎ',0.3,'個'],['ごはん',1,'杯']],'しょうゆ・みりん・だし・砂糖',['鶏肉と玉ねぎをだしと調味料で煮る','溶き卵を回し入れてふたをして半熟に','ごはんにのせる']],
+ ['主菜','肉野菜炒め',15,[['豚肉',70,'g'],['キャベツ',0.12,'玉'],['にんじん',0.2,'本'],['もやし',0.3,'袋']],'塩こしょう・しょうゆ・ごま油',['野菜を切る','豚肉を炒め、固い野菜から順に加える','塩こしょうとしょうゆで強火で仕上げる']],
+ ['主菜','チキンのトマト煮',25,[['鶏肉',120,'g'],['トマト',1,'個'],['玉ねぎ',0.3,'個']],'コンソメ・塩こしょう・オリーブ油',['鶏肉に塩こしょうして焼く','玉ねぎとトマトを加えて炒める','水とコンソメで15分煮込む']],
+ ['主菜','なすと豚肉の味噌炒め',15,[['豚肉',80,'g'],['なす',1,'本'],['ピーマン',1,'個']],'味噌・みりん・砂糖・酒',['なす・ピーマンを乱切りにする','豚肉となすを炒める','ピーマンと合わせ調味料を加えて炒め絡める']],
+ ['主菜','豆腐ステーキきのこあん',15,[['豆腐',0.5,'丁'],['しめじ',0.3,'パック'],['ねぎ',0.1,'本']],'しょうゆ・みりん・片栗粉',['豆腐の水気を切って両面を焼く','きのこをしょうゆ・みりんで煮てとろみをつける','豆腐にかけてねぎを散らす']],
+ ['主菜','エビチリ',20,[['えび',5,'尾'],['ねぎ',0.3,'本']],'ケチャップ・豆板醤・砂糖・片栗粉・にんにく',['えびに片栗粉をまぶして焼く','ねぎ、にんにく、豆板醤を炒める','ケチャップ等の調味料でえびを絡める']],
+ ['主菜','カレーライス',35,[['豚肉',80,'g'],['じゃがいも',0.7,'個'],['にんじん',0.3,'本'],['玉ねぎ',0.5,'個'],['ごはん',1,'杯']],'カレールウ',['具材を切って炒める','水を加えて15分煮る','火を止めてルウを溶かし、さらに5分煮る']],
+ ['主菜','ふわふわ卵とトマトの炒め',10,[['卵',2,'個'],['トマト',1,'個']],'塩・砂糖・ごま油・しょうゆ',['トマトをくし切りにする','卵を半熟に炒めて一度取り出す','トマトを炒め、卵を戻して調味する']],
+ ['主菜','鶏肉とキャベツの蒸し煮',20,[['鶏肉',100,'g'],['キャベツ',0.15,'玉']],'塩こしょう・酒・ポン酢',['キャベツと鶏肉を鍋に重ねる','酒をふり、ふたをして10分蒸し煮にする','ポン酢でいただく']],
+ ['主菜','焼きうどん',15,[['豚肉',60,'g'],['キャベツ',0.1,'玉'],['にんじん',0.1,'本'],['うどん',1,'玉']],'しょうゆ・めんつゆ・かつお節',['具材を炒める','うどんを加えほぐしながら炒める','しょうゆとめんつゆで味付け、かつお節をかける']],
+ ['主菜','ぶりの照り焼き',15,[['ぶり',1,'切れ']],'しょうゆ・みりん・酒・砂糖',['ぶりに小麦粉をまぶす','両面を焼く','調味料を加えて煮絡める']],
+ ['主菜','ひき肉となすのそぼろ炒め',15,[['ひき肉',80,'g'],['なす',1,'本'],['ねぎ',0.2,'本']],'しょうゆ・みりん・砂糖・生姜',['なすを角切りにして炒める','ひき肉を加えて炒める','調味料とねぎを加えて汁気を飛ばす']],
+ ['主菜','ほうれん草と卵のオムレツ',10,[['卵',2,'個'],['ほうれん草',0.2,'束'],['ベーコン',1,'枚']],'塩こしょう・バター',['ほうれん草とベーコンを炒める','溶き卵を流し入れる','半熟で形を整える']],
+ ['主菜','ツナと玉ねぎの卵とじ',10,[['ツナ缶',0.5,'缶'],['玉ねぎ',0.3,'個'],['卵',1.5,'個']],'めんつゆ',['玉ねぎを薄切りにしてめんつゆで煮る','ツナを加える','溶き卵でとじる']],
+ // --- 副菜 ---
+ ['副菜','ほうれん草のおひたし',8,[['ほうれん草',0.4,'束']],'しょうゆ・だし・かつお節',['ほうれん草をゆでて水にとり絞る','4cmに切る','だしじょうゆとかつお節で和える']],
+ ['副菜','ほうれん草のナムル',8,[['ほうれん草',0.4,'束'],['にんじん',0.1,'本']],'ごま油・塩・おろしにんにく・白ごま',['ほうれん草とにんじんの細切りをゆでる','水気を絞る','ごま油・塩・にんにく・ごまで和える']],
+ ['副菜','もやしのナムル',6,[['もやし',0.5,'袋']],'ごま油・鶏ガラ・塩・白ごま',['もやしをレンジで3分加熱','水気を切る','調味料で和える']],
+ ['副菜','小松菜のおひたし',8,[['小松菜',0.4,'束']],'しょうゆ・だし・かつお節',['小松菜をゆでて水にとり絞る','4cmに切る','だしじょうゆで和える']],
+ ['副菜','きゅうりとわかめの酢の物',8,[['きゅうり',0.5,'本'],['わかめ',3,'g']],'酢・砂糖・しょうゆ',['きゅうりを薄切りにして塩もみする','わかめを戻す','三杯酢で和える']],
+ ['副菜','キャベツの塩昆布和え',5,[['キャベツ',0.1,'玉']],'塩昆布・ごま油',['キャベツをざく切りにしてレンジで加熱','水気を切る','塩昆布とごま油で和える']],
+ ['副菜','ブロッコリーのごま和え',10,[['ブロッコリー',0.3,'株']],'すりごま・しょうゆ・砂糖',['ブロッコリーを小房に分けてゆでる','すりごま・しょうゆ・砂糖を混ぜる','和える']],
+ ['副菜','トマトとツナのサラダ',5,[['トマト',0.5,'個'],['ツナ缶',0.3,'缶']],'塩こしょう・オリーブ油・酢',['トマトを角切りにする','ツナと合わせる','ドレッシングで和える']],
+ ['副菜','ポテトサラダ',20,[['じゃがいも',1,'個'],['きゅうり',0.3,'本'],['にんじん',0.1,'本']],'マヨネーズ・塩こしょう・酢',['じゃがいもとにんじんをゆでて潰す','きゅうりは薄切りで塩もみ','粗熱が取れたらマヨネーズで和える']],
+ ['副菜','きんぴらごぼう',15,[['ごぼう',0.3,'本'],['にんじん',0.2,'本']],'しょうゆ・みりん・砂糖・ごま油・白ごま',['ごぼうとにんじんを細切りにする','ごま油で炒める','調味料を加えて汁気がなくなるまで炒める']],
+ ['副菜','なすの焼きびたし',15,[['なす',1,'本']],'めんつゆ・生姜',['なすを焼く','めんつゆに漬ける','生姜をのせる']],
+ ['副菜','かぼちゃの煮物',20,[['かぼちゃ',100,'g']],'しょうゆ・砂糖・みりん・だし',['かぼちゃを一口大に切る','調味料と水で10分煮る','火を止めて味をなじませる']],
+ ['副菜','冷奴',3,[['豆腐',0.33,'丁'],['ねぎ',0.1,'本']],'しょうゆ・かつお節・生姜',['豆腐を器に盛る','ねぎ・かつお節をのせる','しょうゆをかける']],
+ ['副菜','だし巻き風卵焼き',10,[['卵',1.5,'個']],'めんつゆ・砂糖・油',['卵・めんつゆ・砂糖を混ぜる','卵焼き器で数回に分けて巻く','切り分ける']],
+ ['副菜','大根とツナのサラダ',8,[['大根',100,'g'],['ツナ缶',0.3,'缶']],'マヨネーズ・ポン酢',['大根を千切りにする','ツナと合わせる','ポン酢とマヨネーズで和える']],
+ ['副菜','ピーマンのおかか炒め',8,[['ピーマン',2,'個']],'しょうゆ・かつお節・ごま油',['ピーマンを細切りにする','ごま油で炒める','しょうゆとかつお節で和える']],
+ ['副菜','もやしとわかめの中華和え',8,[['もやし',0.4,'袋'],['わかめ',3,'g']],'ごま油・酢・しょうゆ・白ごま',['もやしをレンジ加熱','わかめを戻して合わせる','調味料で和える']],
+ // --- 汁物 ---
+ ['汁物','豆腐とわかめの味噌汁',8,[['豆腐',0.2,'丁'],['わかめ',2,'g']],'だし・味噌',['だしを沸かす','豆腐とわかめを入れる','味噌を溶く']],
+ ['汁物','玉ねぎと油揚げの味噌汁',8,[['玉ねぎ',0.25,'個'],['油揚げ',0.5,'枚']],'だし・味噌',['玉ねぎを薄切りにしだしで煮る','油揚げを加える','味噌を溶く']],
+ ['汁物','じゃがいもの味噌汁',12,[['じゃがいも',0.5,'個'],['玉ねぎ',0.2,'個']],'だし・味噌',['具を切ってだしで煮る','柔らかくなったら味噌を溶く']],
+ ['汁物','なめこの味噌汁',6,[['なめこ',0.5,'袋'],['ねぎ',0.1,'本']],'だし・味噌',['だしを沸かしなめこを入れる','味噌を溶く','ねぎを散らす']],
+ ['汁物','卵とねぎの中華スープ',6,[['卵',0.5,'個'],['ねぎ',0.15,'本']],'鶏ガラ・塩こしょう・ごま油・片栗粉',['鶏ガラスープを沸かす','水溶き片栗粉でとろみをつける','溶き卵を回し入れ、ねぎとごま油を加える']],
+ ['汁物','豚汁',20,[['豚肉',30,'g'],['大根',40,'g'],['にんじん',0.1,'本'],['ねぎ',0.1,'本']],'だし・味噌・ごま油',['豚肉と野菜をごま油で炒める','だしを加えて10分煮る','味噌を溶いてねぎを散らす']],
+ ['汁物','ほうれん草と卵のスープ',8,[['ほうれん草',0.15,'束'],['卵',0.5,'個']],'コンソメ・塩こしょう',['コンソメスープを沸かす','ほうれん草を入れる','溶き卵を回し入れる']],
+ ['汁物','キャベツとベーコンのコンソメスープ',10,[['キャベツ',0.08,'玉'],['ベーコン',1,'枚'],['玉ねぎ',0.15,'個']],'コンソメ・塩こしょう',['具を食べやすく切る','水とコンソメで10分煮る','塩こしょうで調える']],
+ ['汁物','大根と油揚げの味噌汁',10,[['大根',50,'g'],['油揚げ',0.5,'枚']],'だし・味噌',['大根を短冊切りにしてだしで煮る','油揚げを加える','味噌を溶く']],
+ ['汁物','トマトと卵のスープ',8,[['トマト',0.5,'個'],['卵',0.5,'個']],'鶏ガラ・塩こしょう',['鶏ガラスープでトマトを煮る','溶き卵を回し入れる','塩こしょうで調える']]
+].map((r, i) => ({id:i, type:r[0], name:r[1], min:r[2], ings:r[3].map(x => ({n:x[0], q:x[1], u:x[2]})), seasoning:r[4], steps:r[5]}));
+
+const COUNT_UNITS = new Set(['個','本','枚','切れ','尾','杯','玉(1)']);
+const TYPES = ['主菜','副菜','汁物'];
+
+// ===== 状態 =====
+const KEY = 'menu-app-v1';
+let S = {people: 2, days: 3, fridge: [], plan: null, checked: {}};
+try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch(e){}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ===== 数量表示 =====
+function fmtQty(q, u){
+  if (u === 'g') return Math.max(10, Math.round(q / 10) * 10) + 'g';
+  if (COUNT_UNITS.has(u) || u === '尾') return Math.max(1, Math.ceil(q - 0.01)) + u;
+  const r = Math.max(0.25, Math.round(q * 4) / 4);
+  const w = Math.floor(r), f = r - w;
+  const fs = {0:'',0.25:'¼',0.5:'½',0.75:'¾'}[f];
+  return (w ? w : '') + fs + u;
+}
+
+// ===== 献立生成 =====
+const fridgeSet = () => new Set(S.fridge.map(x => resolve(x).name));
+
+function score(rec, have, used){
+  let hit = 0, miss = 0, pen = 0;
+  rec.ings.forEach(i => {
+    if (have.has(i.n)) { hit++; if ((used[i.n] || 0) >= 2) pen += 2.5; }
+    else miss++;
+  });
+  return hit * 3 - miss * 0.7 - pen + Math.random() * 2;
+}
+
+function pick(type, have, used, exclude){
+  const cands = R.filter(r => r.type === type && !exclude.has(r.id));
+  if (!cands.length) return null;
+  return cands.map(r => [score(r, have, used), r]).sort((a, b) => b[0] - a[0])[0][1];
+}
+
+function noteUse(rec, used, d = 1){
+  rec.ings.forEach(i => used[i.n] = (used[i.n] || 0) + d);
+}
+
+function generate(){
+  const have = fridgeSet(), used = {}, exclude = new Set(), plan = [];
+  for (let d = 0; d < S.days; d++) {
+    const day = [];
+    TYPES.forEach(t => {
+      const r = pick(t, have, used, exclude);
+      if (r) { exclude.add(r.id); noteUse(r, used); day.push(r.id); }
+    });
+    plan.push(day);
+  }
+  S.plan = plan; S.checked = {}; save(); render();
+}
+
+function swap(d, k){
+  const cur = S.plan[d][k];
+  const rec = R[cur];
+  const have = fridgeSet(), used = {}, exclude = new Set();
+  S.plan.forEach((day, di) => day.forEach((id, ki) => { exclude.add(id); if (!(di === d && ki === k)) noteUse(R[id], used); }));
+  const next = pick(rec.type, have, used, exclude);
+  if (!next) { alert('この種別の他のレシピがもうありません'); return; }
+  S.plan[d][k] = next.id; S.checked = {}; save(); render();
+}
+
+// ===== 描画 =====
+function renderSettings(){
+  $('people').innerHTML = [1,2,3,4].map(n => `<button data-p="${n}" class="${S.people===n?'on':''}">${n}人</button>`).join('');
+  $('days').innerHTML = [1,3,5,7].map(n => `<button data-d="${n}" class="${S.days===n?'on':''}">${n}日分</button>`).join('');
+  $('fridge').innerHTML = S.fridge.length
+    ? S.fridge.map((x, i) => `<span class="chip ${resolve(x).known?'':'unk'}">${esc(x)}<span class="x" data-rm="${i}">✕</span></span>`).join('')
+    : '<span class="sub">まだ何も入っていません</span>';
+  const quick = ['ほうれん草','玉ねぎ','じゃがいも','にんじん','キャベツ','なす','ピーマン','トマト','もやし','ねぎ','豚肉','鶏肉','ひき肉','鮭','卵','豆腐'];
+  const mine = new Set(S.fridge.map(x => resolve(x).name));
+  $('quick').innerHTML = quick.filter(q => !mine.has(q)).map(q => `<span class="chip add" data-q="${q}">＋${q}</span>`).join('');
+}
+
+function renderPlan(){
+  const out = $('out');
+  if (!S.plan) { out.innerHTML = ''; return; }
+  const have = fridgeSet(), p = S.people;
+  const wk = '日月火水木金土';
+  const shop = {}, useFromFridge = new Set();
+  let html = '';
+  S.plan.forEach((day, d) => {
+    const dt = new Date(); dt.setDate(dt.getDate() + d);
+    const label = (d === 0 ? '今日' : d === 1 ? '明日' : `${d + 1}日目`) + `（${dt.getMonth()+1}/${dt.getDate()} ${wk[dt.getDay()]}）`;
+    html += `<div class="card"><div class="day">${label}の夕食</div>`;
+    day.forEach((id, k) => {
+      const r = R[id];
+      const ings = r.ings.map(i => {
+        const q = fmtQty(i.q * p, i.u), has = have.has(i.n);
+        if (has) useFromFridge.add(i.n);
+        else { const key = i.n + '|' + i.u; (shop[key] = shop[key] || {n:i.n, u:i.u, q:0}).q += i.q * p; }
+        return has ? `<span class="have">${esc(i.n)} ${q}</span>` : `${esc(i.n)} ${q}`;
+      }).join('、');
+      html += `<div class="dish"><div class="dish-h"><span class="type">${r.type}</span><span class="name">${esc(r.name)}</span><span class="sub">${r.min}分</span><button class="ghost" data-swap="${d},${k}">替える</button></div>
+        <div class="ing">${ings}</div>
+        <details><summary>作り方</summary><ol class="steps">${r.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol><div class="sub">調味料：${esc(r.seasoning)}</div></details></div>`;
+    });
+    html += '</div>';
+  });
+
+  const list = Object.values(shop).sort((a, b) => a.n.localeCompare(b.n, 'ja'));
+  html += `<div class="card shop"><h2>🛒 買い足すもの（${p}人分）</h2>`;
+  html += list.length ? '<ul>' + list.map(x => {
+    const key = x.n + '|' + x.u, c = S.checked[key];
+    return `<li><label><input type="checkbox" data-chk="${esc(key)}" ${c?'checked':''}><span class="${c?'done':''}">${esc(x.n)} ${fmtQty(x.q, x.u)}</span></label></li>`;
+  }).join('') + '</ul>' : '<div class="empty">買い足すものはありません 🎉</div>';
+  if (useFromFridge.size) html += `<div class="sub" style="margin-top:8px">冷蔵庫から使う食材：${[...useFromFridge].map(esc).join('、')}</div>`;
+  const unused = S.fridge.filter(x => { const r = resolve(x); return !useFromFridge.has(r.name); });
+  if (unused.length) html += `<div class="sub" style="margin-top:4px">今回使わなかった食材：${unused.map(esc).join('、')}${unused.some(x => !resolve(x).known) ? '（点線の食材はレシピ未登録です）' : ''}</div>`;
+  html += '</div>';
+  out.innerHTML = html;
+}
+
+function render(){ renderSettings(); renderPlan(); }
+
+// ===== イベント =====
+function addItems(text){
+  text.split(/[、,，\s\n]+/).map(s => s.trim()).filter(Boolean).forEach(s => {
+    const r = resolve(s);
+    if (!S.fridge.some(x => resolve(x).name === r.name)) S.fridge.push(r.known ? s : r.name);
+  });
+  save(); render();
+}
+$('addBtn').onclick = () => { addItems($('inp').value); $('inp').value = ''; $('inp').focus(); };
+$('inp').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) $('addBtn').click(); });
+$('gen').onclick = generate;
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset.p) { S.people = +t.dataset.p; save(); render(); }
+  else if (t.dataset.d) { S.days = +t.dataset.d; save(); renderSettings(); }
+  else if (t.dataset.rm) { S.fridge.splice(+t.dataset.rm, 1); save(); render(); }
+  else if (t.dataset.q) addItems(t.dataset.q);
+  else if (t.dataset.swap) { const [d, k] = t.dataset.swap.split(',').map(Number); swap(d, k); }
+});
+document.addEventListener('change', e => {
+  if (e.target.dataset.chk) { S.checked[e.target.dataset.chk] = e.target.checked; save(); renderPlan(); }
+});
+render();
+</script>
+</body>
+</html>
